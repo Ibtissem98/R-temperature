@@ -1,0 +1,325 @@
+---
+title: <div align="center">**Econométrie Projet Température**</div>
+author: "GUILBERT- -ARRUGA Léo et JEBALI Ibtissem, Master 1 Big Data"
+date: "Décembre 2023"
+lang: "fr"
+fontsize: 11pt 
+geometry: a4paper,top=2cm,bottom=2cm,left=1cm,right=1cm
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_section: no
+    theme: flatly
+    df_print: paged
+  pdf_document:
+    toc: yes
+    keep_tex: yes
+    number_section: no
+    df_print: kable
+editor_options: 
+  chunk_output_type: console
+---
+
+# **Présentation de l'étude**
+
+Notre étude sur les températures climatiques porte sur les villes de Barcelone et de Grenade, respectivement situées en Catalogne au nord-est de l'Espagne et au sud du pays, en Andalousie. Les données de la ville de Grenade sont peu fournies et seule la variable TAVG est utilisable, contrairement à celles de Barcelone car il manque des données observées.
+
+De fait, nous concentrerons notre étude sur Barcelone puis comparer ces deux villes sur la période de Juin 2021 à Avril 2022. La période de Juin 2021 à Avril 2022 a été choisi car elle offre les données les plus complètes afin de comparer ces deux villes sur environ un an.
+
+Les données sont converties en degrés Celcius afin de simplifier la lecture des représentations graphiques et les interprétations.
+Nous allons étudier les variations de températures quotidiennes et mensuelles pour la ville de Barcelone sur la période de Janvier 2008 à Juin 2023.
+
+
+```{r option chunk, echo = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, #masquer le code rendu final
+  warning = FALSE, #ne pas afficher les warnings dans le rendu final
+  message = FALSE  #ne pas afficher les messages dans le rendu final
+) 
+```
+
+```{r packages, message=FALSE}
+library(readxl)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(fmsb)
+```
+
+```{r import et nettoyage}
+setwd("C:/Users/leogu/OneDrive/Bureau/Etude/Master1/M1/EconometrieAppliquee/projeteconotemp/donnees") #chemin
+data_barca <- read_excel("barcelone.xlsx") #import
+data_grenade <- read_excel("grenade.xlsx")
+colnames(data_barca) <- c("Date", "TAVG", "TMAX", "TMIN") #renommer var
+colnames(data_grenade) <- c("Date", "TAVG", "TMAX", "TMIN")
+indice_barca <- c(which(is.na(data_barca$TMAX)), which(is.na(data_barca$TMIN))) #indice NA
+data_barca <- data_barca[-indice_barca,] #supprimer lignes avec des NA dans TMAX et TMIN
+data_barca$Date <- as.Date(data_barca$Date, format = "%d/%m/%Y") #format date
+data_grenade$Date <- as.Date(data_grenade$Date, format = "%d/%m/%Y")
+data_barca$TMAX <- (data_barca$TMAX - 32) * 5/9 #conversion celcius
+data_barca$TMIN <- (data_barca$TMIN - 32) * 5/9
+data_grenade$TAVG <- (data_grenade$TAVG - 32) * 5/9 
+```
+
+# **Définition de TAVG et DTR**
+
+```{r calcul AVG et DTR}
+data_barca$TAVG <- (data_barca$TMAX + data_barca$TMIN) / 2 #calcul TAVG
+data_barca$DTR <- data_barca$TMAX - data_barca$TMIN #calcul DTR
+```
+
+
+```{r data en mois}
+#barcelone
+data_barca$Mois <- month(data_barca$Date) #var mois (avec lubridate)
+data_barca$Annee <- year(data_barca$Date) #var annees
+data_barca_mois <- data_barca %>% #nouveau df par mois
+  group_by(Annee, Mois) %>% # %>% pipe, grouper par mois
+  summarise( #fais la moyenne de toutes les valeurs par mois
+    TAVG = mean(TAVG, na.rm = TRUE),
+    TMAX = mean(TMAX, na.rm = TRUE),
+    TMIN = mean(TMIN, na.rm = TRUE),
+    DTR = mean(DTR, na.rm = TRUE))
+noms_mois <- c("Jan", "Fév", "Mar", "Avr", "Mai", "Jun", #renommer mois pour graphique
+               "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc")
+data_barca_mois$Mois <- factor(data_barca_mois$Mois, #mettre les nouveaux noms
+                               levels = 1:12, labels = noms_mois)
+#grenade
+data_grenade$Mois <- month(data_grenade$Date) #var mois
+data_grenade$Annee <- year(data_grenade$Date) #var annees
+data_grenade_mois <- data_grenade %>% #nouveau df par mois
+  group_by(Annee, Mois) %>%
+  summarise( #fais la moyenne de toutes les valeurs par mois
+    TAVG = mean(TAVG, na.rm = TRUE))
+data_grenade_mois$Mois <- factor(data_grenade_mois$Mois,
+                                 levels = 1:12, labels = noms_mois)
+```
+
+Dans le cadre de notre étude, le TAVG représente la température moyenne quotidienne ou mensuelle selon le cas. Elle est calculée en faisant la moyenne entre les températures maximales et minimales de la période voulue.
+Le DTR mesure l'amplitude de température de la période déterminée. Cela représente l'écart entre la température la plus faible et la plus élevée.
+Nous allons créer une nouvelle base de données permettant de compiler les données par mois de la ville de Barcelone afin de faciliter la lecture graphique.
+
+# **Températures quotidiennes à Barcelone**
+
+```{r var quot}
+ggplot(data_barca, aes(x = Date)) + #abcisse date
+  geom_line(aes(y = TMIN, color = "Température Minimale"),
+            size = 0.5) + #courbe
+  geom_line(aes(y = TMAX, color = "Température Maximale"),
+            size = 0.5) + #epaisseur trait
+  geom_smooth(aes(y = TMIN), method = "lm",#ligne de tendance
+              se = FALSE, #masquer ecart-type
+              linetype = "dashed", #ligne pointille
+              color = "black") + #couleur
+  geom_smooth(aes(y = TMAX), method = "lm",
+              se = FALSE,
+              linetype = "dashed",
+              color = "black") +
+  labs(title = "Variation quotidienne des températures à Barcelone", #titre
+       x = "Années",
+       y = "Température (C)",
+       color = "Légende") + #nom legende couleur
+  scale_color_manual(values = c("Température Minimale" = "#92C5DE", "Température Maximale" = "#E67377")) + #couleur legende+graph
+  annotate("text", #ajout texte
+           x = as.Date("2023-10-01"), y = 20, #coordonnees du texte
+           label = "TMAX", size = 3, color = "black") + #taille + couleur
+  annotate("text",
+           x = as.Date("2023-10-01"), y = 13,
+           label = "TMIN", size = 3, color = "black") +
+  theme(legend.position = "top")  #legende en haut
+```
+<br>
+Sur le graphique ci-dessus sont representées les données de températures quotidiennes minimales et maximales de 2008 à 2023 à Barcelone. Nous remarquons que globalement toutes les années suivent la même tendance (courbes pointillées noires TMAX et TMIN).
+Ces lignes de tendances affichent des pentes moyennes légèrement positives, ce qui nous montre une hausse de la température au fil du temps et par conséquent un réchauffement climatique.
+
+
+# **Températures mensuelles à Barcelone**
+
+```{r boxplot mois barca}
+code_col <- c("#92C5DE", "#92C5DE", "#A2C89A", "#A2C89A", "#A2C89A", #couleur mois saison
+              "#E67377", "#E67377", "#E67377", "#FFD37F", "#FFD37F", "#FFD37F", "#92C5DE")
+ggplot(data_barca_mois, aes(x = factor(Mois), y = TAVG,
+                            fill = factor(Mois))) + #couleur par mois avec code couleur
+  geom_boxplot(outlier.shape = NA) + #enlever valeur aberrantes
+  scale_fill_manual(values = code_col)+ #fonction couleur par saison
+  labs(title = "Comparaison de la TAVG mensuelle à Barcelone", #titre
+       x = "Mois",
+       y = "Température (C)")
+```
+<br>
+Ce graphique décrit par des boîtes à moustaches les températures moyennes mensuelles (TAVG) de la ville de Barcelone. Un code couleur par saison a été mis en place (hiver, printemps, été, automne).
+Nous constatons que certains mois varient très peu au fil des années. D'autres subissent des variations significatives comme les mois de Mai, Juin, Novembre et la totalité de la saison hivernale. Le mois de février est le mois avec le plus de variations selon les années, il est relativement instable.
+
+<br>
+```{r dif mois barca}
+data_barca_mois$Variation <- c(0, #ajout var mensuelle, zero pour premier mois
+                               diff(data_barca_mois$TAVG)) #calcul variation mensuelle
+data_barca_mois_moyenne <- data_barca_mois %>% #nouveau df moyen mensuel
+  group_by(Mois) %>% #grouper par mois
+  summarise( #moyenne de toutes les var de chaque mois peu importe annees
+    TAVG = mean(TAVG, na.rm = TRUE),
+    TMAX = mean(TMAX, na.rm = TRUE),
+    TMIN = mean(TMIN, na.rm = TRUE),
+    DTR = mean(DTR, na.rm = TRUE),
+    Variation = mean(Variation, na.rm = TRUE)
+  ) 
+data_barca_mois_moyenne$Variation <- round(data_barca_mois_moyenne$Variation,1) #arrondir var
+var_moyenne <- ifelse(data_barca_mois_moyenne$Variation > 0, #si var positive
+                      paste("+", data_barca_mois_moyenne$Variation), #mettre + devant
+                      data_barca_mois_moyenne$Variation) #sinon laisser normal
+ggplot(data_barca_mois_moyenne,
+       aes(x = factor(Mois), y = TAVG, fill = Variation)) + #var
+  geom_bar(stat = "identity", #type calcul avec geombar
+           color = "black", #couleur bordure hist
+           width = 0.8) + #epaisseur barre
+  geom_text(aes(label = var_moyenne), #texte valeur var
+           size=3, #taille texte
+            position = position_nudge(x = 0, y = 1)) + #coordonnées texte
+  labs(title = "Variation de la TAVG mensuelle à Barcelone", #titre
+       x = "Mois",
+       y = "Température (C)") +
+  scale_fill_gradient2(low = "#92C5DE", #borne temperature froide #degrade couleur
+                       high = "#E67377", #borne temperature chaude
+                       midpoint = 0) #milieu intervalle legende
+```
+<br>
+Ci-dessus un graphique permettant d'illustrer les variations de températures mensuelles à Barcelone sur la période 2008-2023. Nous observons qu'il fait entre 12 et 20 degrés tout au long de l'année à l'exception de l'été où la moyenne atteint presque 30 degrés.
+Les variations de températures sont relativement similaires au cours des saisons.
+
+
+# **Comparaison entre 2008 et 2022 à Barcelone**
+
+```{r geomstep TAVG et DTR}
+data_2008 <- subset(data_barca_mois, Annee == 2008) #df 2008
+data_2022 <- subset(data_barca_mois, Annee == 2022) #df 2022
+ggplot() +
+  geom_step(data = data_2022, #graph relie points en escalier
+            aes(x = Mois, y = TAVG, color = "2022", group=1)) +
+  geom_step(data = data_2008,
+            aes(x = Mois, y = TAVG, color = "2008", group=1)) +
+  scale_color_manual(values = c("2008" = "#92C5DE", "2022" = "#E67377")) + #col selon df
+  labs(title = "Comparaison de la TAVG moyenne en 2008 et 2022 à Barcelone", #titre
+       x = "Mois",
+       y = "Température (C)",
+       color = "Années")
+ggplot() + 
+  geom_step(data = data_2008,
+            aes(x = Mois, y = DTR, color = "2008", group=1)) +
+  geom_step(data = data_2022,
+            aes(x = Mois, y = DTR, color = "2022", group=1)) +
+  scale_color_manual(values = c("2008" = "#92C5DE", "2022" = "#E67377")) +
+  labs(title = "Comparaison du DTR moyen en 2008 et 2022 à Barcelone",
+       x = "Mois",
+       y = "Température (C)",
+       color = "Années")
+dif2008_2022 <- round((mean(data_2022$TAVG) - mean(data_2008$TAVG)),2) #calcul dif 22-08
+```
+<br>
+Ci-dessus une comparaison entre les températures moyennes mensuelles et une comparaison de l'étendue moyenne des températures par mois des années 2008 et 2022 à Barcelone. En rouge pour 2022 et en bleu pour 2008.
+Nous remarquons que globalement la température a augmenté entre ces deux périodes.
+En effet, la température moyenne a varié de +`r dif2008_2022`°C entre 2008 et 2022 à Barcelone.
+De plus, il y avait globalement plus de variation de températures en 2008. Enfin, les variations se situent couramment entre 5.5 et 7.5°C.
+
+
+# **Régression linéaire de la TAVG mensuelle à Barcelone**
+
+```{r regression}
+data_barca_mois$Mois <- relevel(data_barca_mois$Mois, ref = "Jul") #juillet en ref
+m1 <- lm(TAVG ~ DTR + Mois, data = data_barca_mois) #creer modele regression
+summary(m1) #afficher resultat du modele
+```
+
+Nous avons choisi de mettre le mois de Juillet(Jul) en référence dans ce modèle de part sa température moyenne stable et élevée.
+Dans ce modèle, chaque mois est comparé au mois de référence (juillet), par exemple le coefficient pour janvier (MoisJan) est -14.16 comparé au mois de juillet. Cela indique une différence significative de la moyenne par rapport à juillet.
+Le modèle global permet d'expliquer environ 94% de la variable TAVG. Les variables MoisAoû et DTR ne sont pas significatives dans ce modèle en raison de leur p-value élevée. En revanche, toutes les autres variables le sont car elles ont des p-values proches de zéro.
+De plus la F-stat a une p-value très faible, par conséquent le modèle est significatif.
+
+# **Comparaison entre Barcelone et Grenade selon la TAVG**
+
+```{r data comparaison}
+data_grenade_comp <- data_grenade_mois #periode juin21-avril22
+data_grenade_comp <- data_grenade_comp[12:22,] #ligne periode demande
+data_grenade_comp <- data_grenade_comp[,2:3] #colonne demande
+data_barca_comp <- data_barca_mois
+data_barca_comp <- data_barca_comp[162:172,]
+data_barca_comp <- data_barca_comp[,2:3]
+
+data_grenade_comp <- data_grenade_comp %>%
+  pivot_wider(names_from = Mois, values_from = TAVG) #mettre mois en nom de var et pas en obs
+data_grenade_comp <- as.data.frame(data_grenade_comp) #convertir en df
+data_barca_comp <- data_barca_comp %>% #pareil pour barca
+  pivot_wider(names_from = Mois, values_from = TAVG)
+data_barca_comp <- as.data.frame(data_barca_comp)
+
+data_grenade_comp <- rbind(data_grenade_comp, rep(0, ncol(data_grenade_comp))) #echelle min 0
+data_grenade_comp <- rbind(data_grenade_comp, rep(30, ncol(data_grenade_comp))) # max 30 
+data_grenade_comp <- data_grenade_comp %>%
+  arrange(desc(row.names(.))) #inverser ordre ligne pour graph radar
+data_radar <- data_grenade_comp #nouveau df pour graph radar
+data_radar <- rbind(data_grenade_comp, data_barca_comp) #fusionner villes
+data_grenade_comp <- data_grenade_comp[3,] #garder que TAVG pour stats, comme barca
+
+radarchart(data_radar, #graph radar
+           seg=3, #nbr segment
+           vlcex = 0.85, #taille etiquette
+           pcol = c("#E67377", "#92C5DE"), #couleur
+           pfcol=scales::alpha(c("#E67377", "#92C5DE"), 0.5), #couleur, remplissage
+           title = "Comparaison TAVG entre Barcelone et Grenade \n de Juin 2021 à Avril 2022")
+legend("topright", #position légende
+       legend = c("Grenade", "Barcelone"), #noms legende
+       fill = c("#E67377", "#92C5DE"), #couleur remplissage
+       cex = 0.6) #taille legende
+```
+
+```{r hist comparaison}
+data_grenade_hist <- data_grenade_mois #periode juin21-avril22
+data_grenade_hist <- data_grenade_hist[12:22,] #ligne periode demande
+data_grenade_hist <- data_grenade_hist[,2:3] #colonne demande
+data_barca_hist <- data_barca_mois #pareil que grenade
+data_barca_hist <- data_barca_hist[162:172,]
+data_barca_hist <- data_barca_hist[,2:3]
+data_hist <- cbind(data_grenade_hist, data_barca_hist[,2]) #df pour histogramme
+colnames(data_hist) <- c("Mois","Grenade","Barcelone") #renommer lignes
+jun_avr <- c("Jun", "Jul", "Aoû", "Sep", "Oct", "Nov",
+             "Déc", "Jan", "Fév", "Mar", "Avr") #ordre periode juin21-avril22
+data_hist$Mois <- factor(data_hist$Mois, levels = jun_avr) #fixer ordre des mois periode
+ggplot(data_hist, aes(x = Mois)) +
+  geom_bar(aes(y = Barcelone, fill = "Barcelone"),
+           stat = "identity", #type de stat avec geombar
+           position = position_nudge(x = -0.2), #mettre barre par mois cote a cote
+           width = 0.4) + #espace entre les barres
+  geom_bar(aes(y = Grenade, fill = "Grenade"),
+           stat = "identity",
+           position = position_nudge(x = 0.2),
+           width = 0.4) +
+  labs(title = "TAVG mensuelle pour Barcelone et Grenade \n de Juin 2021 à Avril 2022",
+       x = "Mois", #ajout titre
+       y = "Température (C)") +
+  scale_fill_manual(values = c("Barcelone" = "#92C5DE", "Grenade" = "#E67377")) + #couleur
+  geom_text(aes(y = Barcelone, #ajout valeur au dessus
+                label = round(Barcelone,0)), #arrondir temperature sans virgule
+            size=2, #taille texte
+            position = position_nudge(x = -0.25, y = 1)) + #coordonnees position texte
+  geom_text(aes(y = Grenade,
+                label = round(Grenade,0)),
+            size=2,
+            position = position_nudge(x = 0.25, y = 1))
+```
+<br>
+Tout d'abord, le graphique radar permet de voir que les températures moyennes entre Barcelone et Grenade sur la période étudiée sont similaires de juin à novembre. Cependant, il fait en moyenne plus froid à Grenade le reste de l'année, surtout en avril.
+
+Par ailleurs, l'histogramme permet d'appuyer notre hypothèse, on voit que les données représentant Barcelone sont significativement plus élevées. La seule fois où il fait plus chaud à Grenade c'est aux mois juillet-août pour un simple degrés de différence. Alors qu'à l'inverse pendant les autres mois, la différence entre ces deux villes peut atteindre 9 degrés en avril.
+
+# **Conclusion de l'étude**
+
+Pour conclure, les données de températures moyennes à Barcelone soulignent une tendance à la hausse au fil des années. Cela est soutenu par les températures maximales et minimales qui ont également augmenté et traduisent ainsi un réchauffement climatique.
+La comparaison entre les périodes de 2008 et 2022 à Barcelone montre  là aussi une augmentation globale de la température moyenne d'environ +`r dif2008_2022`°C.
+En outre, la comparaison entre Barcelone et Grenade sur la période Juin 2021 à Avril 2022 a établi des différences entre les températures mensuelles. Ainsi, Barcelone affiche une tendance à être une ville plus chaude tout au long de l'année. Pour être en mesure de conclure avec certitude il faudrait effectuer une analyse en utilisant des données plus complètes pour la ville de Grenade afin de comparer sur plusieurs années avec Barcelone.
+
+
+
+
+
+
